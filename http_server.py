@@ -20,6 +20,7 @@ except Exception as e:
         OUT=0
         LOW=0
         HIGH=0
+        BOARD=0
 
         @staticmethod
         def setup(x, y):
@@ -28,6 +29,14 @@ except Exception as e:
         @staticmethod
         def output(x, y):
             pass
+
+        @staticmethod
+        def setmode(x):
+            pass
+
+finally:
+    GPIO.setmode(GPIO.BOARD)
+    GPIO.setmode(GPIO.BOARD)
 
 class Const(object):
     class ConsError(TypeError):
@@ -78,6 +87,10 @@ class Wheel():
 class Car:
     def __init__(self, gpio, wheelNo=None):
 
+        if not self.check_GPIO(gpio):
+            print('gpio error, gpio=%s' % gpio)
+            raise Exception('gpio error')
+
         if isinstance(wheelNo, int):
             if len(gpio) != 1:
                 print('gpio size is not 1')
@@ -94,6 +107,20 @@ class Car:
                 self.__wheel_4 = Wheel(gpio[3][0], gpio[3][1])
 
                 self.__wheels = [self.__wheel_1, self.__wheel_2, self.__wheel_3, self.__wheel_4]
+
+    def __del__(self):
+        for wheel in self.__wheels:
+            if wheel:
+                wheel.stop();
+
+    def check_GPIO(self, gpio)->bool:
+        enable_io = [29, 31, 13, 15, 11, 12, 32, 33]
+
+        for io1, io2 in gpio:
+            if io1 not in enable_io or io2 not  in enable_io:
+                return False
+        return True
+
 
     def stop(self, wheelNo = None):
         if isinstance(wheelNo, int):
