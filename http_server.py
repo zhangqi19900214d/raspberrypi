@@ -41,12 +41,12 @@ class GPIO():
         _GPIO.setup(self.__index, inout)
 
     def high(self):
-        #_GPIO.output(self.__index, _GPIO.HIGH)
+        _GPIO.output(self.__index, _GPIO.HIGH)
         #print("%d set high" % self.__index)
         pass
 
     def low(self):
-        #_GPIO.output(self.__index, _GPIO.LOW)
+        _GPIO.output(self.__index, _GPIO.LOW)
         #print("%d set low" % self.__index)
         pass
 
@@ -81,6 +81,7 @@ class Wheel():
         self.__io2.high()
         self.__io1.low()
         self.run_period = time.time() + term
+        print("will run %dms" % (self.run_period-time.time()))
 
     def stop(self):
         self.__io1.low()
@@ -91,11 +92,10 @@ class Wheel():
     def running(this):
         while True:
 
-            if this.run_period >= time.time():
-                #print("run %.2f ms" % this.run_period - time.time())
+            if time.time() >= this.run_period:
                 this.stop()
             else:
-                time.sleep(0.5)
+                time.sleep(0.1)
 
 class Car:
     def __init__(self):
