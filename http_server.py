@@ -1,33 +1,28 @@
 #!/usr/bin/python3
 #encoding=utf-8
 
-import cv2
-import numpy as np
 import tornado
 import tornado.ioloop
 import tornado.web
 import base64
-import json
-import numpy
-import time
 import time
 import threading
 
 try:
-    import RPi.GPIO as GPIO
+    import RPi.GPIO as _GPIO
 except Exception as e:
-    class GPIO():
+    class _GPIO():
         OUT=0
         LOW=0
         HIGH=0
         BOARD=0
 
         @staticmethod
-        def setup(x, y):
+        def setup(index, inout):
             pass
 
         @staticmethod
-        def output(x, y):
+        def output(index, high):
             pass
 
         @staticmethod
@@ -35,110 +30,102 @@ except Exception as e:
             pass
 
 finally:
-    GPIO.setmode(GPIO.BOARD)
-    GPIO.setmode(GPIO.BOARD)
+    _GPIO.setmode(_GPIO.BOARD)
+    _GPIO.setmode(_GPIO.BOARD)
 
-class Const(object):
-    class ConsError(TypeError):
+class GPIO():
+    def __init__(self, index):
+        self.__index = index
+
+    def setup(self, inout = _GPIO.OUT):
+        _GPIO.setup(self.__index, inout)
+
+    def high(self):
+        #_GPIO.output(self.__index, _GPIO.HIGH)
+        #print("%d set high" % self.__index)
         pass
 
-    class ConstCaseError(ConsError):
+    def low(self):
+        #_GPIO.output(self.__index, _GPIO.LOW)
+        #print("%d set low" % self.__index)
         pass
 
-    def __setattr__(self, name, value):
-        if name in self.__dict__:
-            raise (self.ConsError, "Can't change const.%s" % name)
-        if not name.isupper():
-            raise (self.ConstCaseError, "const name '%s' is not all uppercase" % name)
-        self.__dict__[name] = value
+    def __del__(self):
+        #_GPIO.cleanup()
+        pass
 
-
-const = Const()
-
-const.SPEED0 = 0
-const.SPEED1 = 1
-const.SPEED2 = 2
-const.SPEED3 = 3
-const.SPEED4 = 4
-const.SPEED5 = 5
-const.MAX_SPEED = 6
 
 class Wheel():
-    def __init__(self, gpio_1, gpio_2):
-        self.__gpio_1 = gpio_1
-        self.__gpio_2 = gpio_2
+    def __init__(self, io1, io2):
+        self.__io1 = GPIO(io1)
+        self.__io2 = GPIO(io2)
 
-        GPIO.setup(self.__gpio_1, GPIO.OUT)
-        GPIO.setup(self.__gpio_2, GPIO.OUT)
+        self.__io1.setup()
+        self.__io2.setup()
 
-    def backward(self):
-        # set io
-        GPIO.output(self.__gpio_1, GPIO.HIGH)
-        GPIO.output(self.__gpio_2, GPIO.LOW)
+        self.run_period = time.time()
 
-    def forward(self):
-        GPIO.output(self.__gpio_1, GPIO.LOW)
-        GPIO.output(self.__gpio_2, GPIO.HIGH)
+        th = threading.Thread(target = Wheel.running, args = [self,])
+        th.start()
+
+    def __del__(self):
+        self.__io1.low()
+        self.__io2.low()
+
+    def backward(self, term):
+        self.__io1.high()
+        self.__io2.low()
+        self.run_period = time.time() + term
+
+    def forward(self, term):
+        self.__io2.high()
+        self.__io1.low()
+        self.run_period = time.time() + term
 
     def stop(self):
-        GPIO.output(self.__gpio_1, GPIO.HIGH)
-        GPIO.output(self.__gpio_2, GPIO.HIGH)
+        self.__io1.low()
+        self.__io2.low()
+        #print("wheel stop...")
+    
+    @staticmethod
+    def running(this):
+        while True:
+
+            if this.run_period >= time.time():
+                #print("run %.2f ms" % this.run_period - time.time())
+                this.stop()
+            else:
+                time.sleep(0.5)
 
 class Car:
-    def __init__(self, gpio, wheelNo=None):
-
-        if not self.check_GPIO(gpio):
-            print('gpio error, gpio=%s' % gpio)
-            raise Exception('gpio error')
-
-        if isinstance(wheelNo, int):
-            if len(gpio) != 1:
-                print('gpio size is not 1')
-            else:
-                self.__wheels = [None, None, None, None]
-                self.__wheels[wheelNo] = Wheel(gpio[0][0], gpio[0][1])
-        else:
-            if len(gpio) != 4:
-                print('gpio size is not 4')
-            else:
-                self.__wheel_1 = Wheel(gpio[0][0], gpio[0][1])
-                self.__wheel_2 = Wheel(gpio[1][0], gpio[1][1])
-                self.__wheel_3 = Wheel(gpio[2][0], gpio[2][1])
-                self.__wheel_4 = Wheel(gpio[3][0], gpio[3][1])
-
-                self.__wheels = [self.__wheel_1, self.__wheel_2, self.__wheel_3, self.__wheel_4]
+    def __init__(self):
+        self.__wheels = [None, None, None, None]
 
     def __del__(self):
         for wheel in self.__wheels:
-            if wheel:
-                wheel.stop();
+            if isinstance(wheel, Wheel):
+                wheel.stop()
 
-    def check_GPIO(self, gpio)->bool:
-        enable_io = [29, 31, 13, 15, 11, 12, 32, 33]
+    def set_wheel(self, index, io1, io2):
+        self.__wheels[index] = Wheel(io1, io2)
 
-        for io1, io2 in gpio:
-            if io1 not in enable_io or io2 not  in enable_io:
-                return False
-        return True
-
-
-    def stop(self, wheelNo = None):
-        if isinstance(wheelNo, int):
+    def stop(self, wheel_index = -1):
+        if wheel_index != -1:
             [w.stop() for w in self.__wheels]
         else:
-            self.__wheels[wheelNo].stop()
+            self.__wheels[wheel_index].stop()
 
-    def forward(self, wheelNo = None):
-        if isinstance(wheelNo, int):
-            self.__wheels[wheelNo].forward()
+    def forward(self, term, wheel_index = -1):
+        if wheel_index != -1:
+            self.__wheels[wheel_index].forward(term)
         else:
-            [w.forward() for w in self.__wheels]
+            [w.forward(term) for w in self.__wheels]
 
-    def backward(self, wheelNo = None):
-        if isinstance(wheelNo, int):
-            self.__wheels[wheelNo].backward()
+    def backward(self, term, wheel_index = -1):
+        if wheel_index != -1:
+            self.__wheels[wheel_index].backward(twem)
         else:
-            [w.backward() for w in self.__wheels]
+            [w.backward(term) for w in self.__wheels]
 
     def turn_left(self):
         pass
@@ -147,18 +134,22 @@ class Car:
         pass
 
 
-class MainHandler(tornado.web.RequestHandler):
-    cmd_stop = 0
-    cmd_test = 1
-
-    __Wheel = [None, None, None, None]
-
-    def initialize (self):
-        #print("server init success...")
-        pass
+class DriverService(tornado.web.RequestHandler):
+    __car = Car()
+    __car.set_wheel(0, 29, 31)
+    __car.set_wheel(1, 13, 15)
+    __car.set_wheel(2, 11, 12)
+    __car.set_wheel(3, 32, 33)
 
     def get(self):
-        self.write("Hello, world")
+
+        if self.request.path == '/':
+            self.request.path = '/index.html'
+
+        path = './' + self.request.path
+        with open(path, 'r') as fp:
+            text = fp.read()
+            self.write(text)
 
     def post(self):
         #print(self.request.path)
@@ -169,27 +160,37 @@ class MainHandler(tornado.web.RequestHandler):
         request = eval(self.request.body)
         cmd = request['command']
         message = request['message']
+        print(request)
 
-        if cmd == MainHandler.cmd_stop:
-            pass
-        elif cmd == MainHandler.cmd_test:
+        if cmd == 0:
+            self.stop(message)
+            print("recv stop...")
+        elif cmd == 1:
             self.test_wheel(message)
 
     def get_command(self):
         request = eval(self.request.body)
         return request['command']
 
-    def test_wheel(self, message):
-        wheelNo = message['wheelNO']
-        gpio = [(message['gpio1'], message['gpio2'])]
+    def stop(self, message):
+        wheel_index = message['wheelNO']
+        DriverService.__car.stop(wheel_index)
 
-        print('test wheel %d as %s' % (wheelNo, gpio))
-        _car = Car(gpio, wheelNo)
-        _car.forward(wheelNo)
+    def test_wheel(self, message):
+        term = message['term']
+        wheel_index = message['wheelNO']
+        io1, io2 = (message['gpio1'], message['gpio2'])
+
+        #DriverService.__car.set_wheel(wheel_index, io1, io2)
+        DriverService.__car.forward(term, wheel_index)
 
 def make_app():
     return tornado.web.Application([
-        (r"/car/control", MainHandler),
+        (r"/car/control", DriverService),
+        (r"/", DriverService),
+        (r"/index.html", DriverService),
+        (r"/my.html", DriverService),
+
     ])
 
 if __name__ == "__main__":
